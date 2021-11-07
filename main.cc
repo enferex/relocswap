@@ -126,28 +126,33 @@ class ElfT : public Elf {
 
  public:
   void dumpRelocs() const override {
-    std::cout << "Relocs (" << relocs.size() << ')' << std::endl;
-    int i = 0;
-    std::cout << "ELFOffset, RelocOffset, RelocInfo, SymName" <<std::endl;
-    std::for_each(relocs.begin(), relocs.end(),
-                  [&](const std::pair<uint64_t, RelT> &pr) {
-                    std::cout << "  " << i++ << ") 0x" << std::hex << pr.first
-                              << ", " << std::dec;
-                    dumpReloc(pr.second);
-                    std::cout << std::endl;
-                  });
+    if (!relocs.empty()) {
+      std::cout << "Dynamic relocs (" << relocs.size() << ')' << std::endl;
+      int i = 0;
+      std::cout << "ELFOffset, RelocOffset, RelocInfo, SymName" << std::endl;
+      std::for_each(relocs.begin(), relocs.end(),
+                    [&](const std::pair<uint64_t, RelT> &pr) {
+                      std::cout << "  " << i++ << ") 0x" << std::hex << pr.first
+                                << ", " << std::dec;
+                      dumpReloc(pr.second);
+                      std::cout << std::endl;
+                    });
+    }
 
-    std::cout << "Relocs with addends (" << relocsAddends.size() << ')'
-              << std::endl;
-    i = 0;
-    std::cout << "ELFOffset, RelocOffset, RelocInfo, RelocAddend, SymName" <<std::endl;
-    std::for_each(relocsAddends.begin(), relocsAddends.end(),
-                  [&](const std::pair<uint64_t, RelaT> &pr) {
-                    std::cout << "  " << i++ << ") 0x" << std::hex << pr.first
-                              << ", " << std::dec;
-                    dumpReloc(pr.second);
-                    std::cout << std::endl;
-                  });
+    if (!relocsAddends.empty()) {
+      std::cout << "Dynamic or PLT relocs with addends ("
+                << relocsAddends.size() << ')' << std::endl;
+      int i = 0;
+      std::cout << "ELFOffset, RelocOffset, RelocInfo, RelocAddend, SymName"
+                << std::endl;
+      std::for_each(relocsAddends.begin(), relocsAddends.end(),
+                    [&](const std::pair<uint64_t, RelaT> &pr) {
+                      std::cout << "  " << i++ << ") 0x" << std::hex << pr.first
+                                << ", " << std::dec;
+                      dumpReloc(pr.second);
+                      std::cout << std::endl;
+                    });
+    }
   }
 
   void swapN(std::ofstream &output, int n) const override {
@@ -223,7 +228,8 @@ class ElfT : public Elf {
       // Read in specific sections.
       if ((shdr.sh_type == SHT_REL || shdr.sh_type == SHT_RELA) &&
           (isSection(shdr.sh_name, ".rel.dyn") ||
-           isSection(shdr.sh_name, ".rela.dyn")))
+           isSection(shdr.sh_name, ".rela.dyn") ||
+           isSection(shdr.sh_name, ".rela.plt")))
         addRels(fp, shdr);
       else if (shdr.sh_type == SHT_STRTAB && isSection(shdr.sh_name, ".dynstr"))
         addStringTable(fp, shdr);
@@ -238,9 +244,11 @@ using Elf64 = ElfT<Elf64_Ehdr, Elf64_Shdr, Elf64_Rel, Elf64_Rela, Elf64_Sym>;
 
 static void usage(const char *execname) {
   std::cout
-      << "Usage: " << execname << " [-h] [-d] [-o OUTFILE] FILE" << std::endl
+      << "Usage: " << execname << " [-h] [-d] [-n NUM] [-o OUTFILE] FILE"
+      << std::endl
       << "  -h:         This help message." << std::endl
       << "  -d:         Dump relocs." << std::endl
+      << "  -n NUM:     Swap 'num' number of relocs." << std::endl
       << "  -o OUTFILE: Output file (required to shuffle the relocs in FILE)."
       << std::endl
       << "  FILE:       Input ELF file, if -o is specified the relocs in FILE "
@@ -270,11 +278,11 @@ static Elf *parseElf(std::ifstream &fp) {
 
 int main(int argc, char **argv) {
   int opt;
-  int nSwaps = 0;
+  int nSwaps = 1;
   bool doDump = false;
   const char *outFname = nullptr;
   srand(time(NULL));
-  while ((opt = getopt(argc, argv, "dho:")) != -1) {
+  while ((opt = getopt(argc, argv, "dhn:o:")) != -1) {
     switch (opt) {
       case 'd':
         doDump = true;
@@ -293,7 +301,7 @@ int main(int argc, char **argv) {
     }
   }
 
-  if (nSwaps <= 0) nSwaps = 1;
+  if (nSwaps < 0) nSwaps = 0;
 
   if (optind + 1 != argc) {
     std::cerr << "Missing filename argument (see -h for help)" << std::endl;
@@ -306,7 +314,7 @@ int main(int argc, char **argv) {
   auto elf = parseElf(fp);
   assert(elf && "Failed to parse ELF file.");
   if (doDump) elf->dumpRelocs();
-  if (outFname) {
+  if (outFname && nSwaps > 0) {
     std::ofstream outFile(outFname, std::ofstream::trunc);
     if (!outFile) errExit(std::string("Failed to open/truncate ") + outFname);
 

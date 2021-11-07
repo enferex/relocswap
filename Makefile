@@ -1,4 +1,4 @@
-APP=relocshufle
+APP=relocswap
 CXXFLAGS=--std=c++17 --pedantic -Wall $(EXTRA_CXXFLAGS)
 SOURCES=main.cc
 OBJS=$(SOURCES:.cc=.o)
